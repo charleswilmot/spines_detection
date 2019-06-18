@@ -1,5 +1,5 @@
-./tfrecords
-./training_runs
-./testing_runs
+/tfrecords
+/training_runs
+/testing_runs
 *.pyc
-
+*~
