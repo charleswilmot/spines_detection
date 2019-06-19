@@ -72,7 +72,7 @@ with tf.Session() as sess:
                 methode2.set_xy((x2 - 7, y2 - 7))
 
                 print(x1, y1, z1, "  ", x2, y2, z2)
-                frame = datadict["stack"][0, :, :, z1, 0]
+                frame = datadict["stack"][:, :, z1, 0]
                 image.set_data(frame)
                 fig.canvas.draw()
                 fig.canvas.flush_events()

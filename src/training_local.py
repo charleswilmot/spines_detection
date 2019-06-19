@@ -37,15 +37,21 @@ def terminate_process_safe(p):
         time.sleep(0.1)
 
 
-def tensorboard_func(self):
+def tensorboard_func(logdir):
     port = get_available_port()
-    p1 = multiprocessing.Process(target=tensorboard_server_func, args=(self.logdir, port), daemon=True)
+    p1 = multiprocessing.Process(target=tensorboard_server_func, args=(logdir, port), daemon=True)
     p1.start()
     time.sleep(2)
     p2 = multiprocessing.Process(target=chromium_func, args=(port,), daemon=True)
     p2.start()
     p2.join()
     terminate_process_safe(p1)
+
+
+def tensorboard(logdir):
+    p1 = multiprocessing.Process(target=tensorboard_func, args=(logdir, ))
+    p1.start()
+    return p1
 
 
 if __name__ == "__main__":
@@ -60,7 +66,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-n", "--name"
+        "-n", "--name",
         help="name for the run"
     )
 
@@ -91,20 +97,30 @@ if __name__ == "__main__":
         help="Number of epochs to train on"
     )
 
+    parser.add_argument(
+        "-tb", "--tensorboard",
+        action="store_true",
+        help="Starts tensorboard"
+    )
 
 
+    # clear ; p3 training_local.py ../tfrecords/cell_size_032_004__cell_strides_008_002__padding_SAME__image_size_512/test3.tfrecord -n test -ne 1 -tb
     args = parser.parse_args()
     name_suffix = ("_" + args.name) if args.name else ""
     output_dir = time.strftime("../training_runs/%Y_%m_%d_%H_%M_%S", time.localtime()) + name_suffix
     checkpoint_dir = output_dir + "/checkpoint"
     tensorboard_dir = output_dir + "/tensorboard"
+    os.mkdir(output_dir)
+    os.mkdir(checkpoint_dir)
+    os.mkdir(tensorboard_dir)
+
 
     dirpath, name = os.path.split(args.path)
     name = name.replace(".tfrecord", "")
     with open(dirpath + '/' + name + ".args", "rb") as f:
         generation_args = pickle.load(f)
 
-    dataset = naked_dataset(args.path)
+    dataset = naked_dataset(args.path, stack_type=tf.float32).batch(1)
     dataset = dataset.repeat(args.n_epochs)
     dataset = dataset.shuffle(buffer_size=50)
     dataset_iterator = dataset.make_initializable_iterator()
@@ -115,36 +131,40 @@ if __name__ == "__main__":
     else:
         raise ValueError("Network type not recognized")
 
-    inp = tf.cast(datapoint["stack"], tf.float32) / 127.5 - 1
+    inp = datapoint["stack"]
     net_out = net(inp)
     cells_coords = tf.stack([
         datapoint["cells_coords_x"],
         datapoint["cells_coords_y"],
-        datapoint["cells_coords_z"]], axis=1)
+        datapoint["cells_coords_z"]], axis=-1)
     within_cells_coords = tf.stack([
         datapoint["within_cells_coords_x"],
         datapoint["within_cells_coords_y"],
-        datapoint["within_cells_coords_z"]], axis=1)
+        datapoint["within_cells_coords_z"]], axis=-1)
     lambda_coord = 5
     lambda_noobj = 0.5
-    loss = get_losses(net_out, cells_coords, within_cells_coords, lambda_coord, lambda_noobj)
+    loss_1, loss_2, loss_3 = get_losses(net_out, cells_coords, within_cells_coords, lambda_coord, lambda_noobj)
     optimizer = tf.train.AdamOptimizer(args.learning_rate)
-    train_op = optimizer.minimize(loss)
+    train_op = optimizer.minimize(loss_1 + loss_2 + loss_3)
+    # train_op = optimizer.minimize(loss_3)
+    # train_op = optimizer.minimize(tf.reduce_sum(net_out ** 2))
+    # train_op = tf.no_op()
 
     ### TODO:
-    ### add start tensorboard to argsparser
-    ### add batch size to argsparser
-    ### start tensorboard
-    ### fix loss
     ### summaries
 
     summary_writer = tf.summary.FileWriter(tensorboard_dir)
-
+    if args.tensorboard:
+        tensorboard_process = tensorboard(tensorboard_dir)
     with tf.Session() as sess:
         sess.run([dataset_iterator.initializer, tf.global_variables_initializer()])
         try:
             while(True):
-                np_loss = sess.run(loss)
+                np_loss, _ = sess.run([(loss_1, loss_2, loss_3), train_op])
                 print(np_loss)
+                # np_loss = sess.run(train_op)
+                # print("done")
         except tf.errors.OutOfRangeError:
             pass
+    if args.tensorboard:
+        terminate_process_safe(tensorboard_process)

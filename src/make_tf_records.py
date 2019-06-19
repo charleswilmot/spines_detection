@@ -217,10 +217,8 @@ def to_tfrecords(labels):
 
 
 if __name__ == "__main__":
-    # example of a command line for testing the file:
+    # example of a command line for making a dataset:
     # clear; p3 make_tf_records.py -i /home/kaschube-shared/spines/SpineMeasurements_XYcoordinates/SR51N1/ -l /home/kaschube-shared/spines/SpineMeasurements_XYcoordinates/SR51N1/SR51*eu*end*ay*.mat -n test -cstxy 8 -cstz 2 -csiz 4 -cpd SAME
-
-    # to_cells_coords(16.1, 16.1, 3, 50)
 
     output_path = args_to_path()
     tfrecord_path = output_path + args.name + ".tfrecord"
