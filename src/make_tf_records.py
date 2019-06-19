@@ -179,6 +179,7 @@ def stack_example(images, labels):
         all_within_cells_coords.append(within_cells_coords)
     all_cells_coords = np.concatenate(all_cells_coords, axis=0)
     all_within_cells_coords = np.concatenate(all_within_cells_coords, axis=0)
+    all_stack_x, all_stack_y = resize_coords(all_stack_x, all_stack_y)
     feature = {
         'height': _int64_feature([image_shape[0]]),                               # single value
         'width': _int64_feature([image_shape[1]]),                                # single value
