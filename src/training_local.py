@@ -142,29 +142,33 @@ if __name__ == "__main__":
         datapoint["within_cells_coords_y"],
         datapoint["within_cells_coords_z"]], axis=-1)
     lambda_coord = 5
-    lambda_noobj = 0.5
-    loss_1, loss_2, loss_3 = get_losses(net_out, cells_coords, within_cells_coords, lambda_coord, lambda_noobj)
+    lambda_noobj = 0.05
+    min_distance_loss, confidence_loss = get_losses(net_out, cells_coords, within_cells_coords, lambda_coord, lambda_noobj)
+    min_distance_summary = tf.summary.scalar("min_distance_loss", min_distance_loss)
+    confidence_summary = tf.summary.scalar("confidence_loss", confidence_loss)
+    # noobj_summary = tf.summary.scalar("noobj_loss", noobj_loss)
+    summary = tf.summary.merge([min_distance_summary, confidence_summary])
+
+
     optimizer = tf.train.AdamOptimizer(args.learning_rate)
-    train_op = optimizer.minimize(loss_1 + loss_2 + loss_3)
-    # train_op = optimizer.minimize(loss_3)
-    # train_op = optimizer.minimize(tf.reduce_sum(net_out ** 2))
-    # train_op = tf.no_op()
+    train_op = optimizer.minimize(min_distance_loss + confidence_loss)
 
     ### TODO:
     ### summaries
 
-    summary_writer = tf.summary.FileWriter(tensorboard_dir)
-    if args.tensorboard:
-        tensorboard_process = tensorboard(tensorboard_dir)
-    with tf.Session() as sess:
-        sess.run([dataset_iterator.initializer, tf.global_variables_initializer()])
-        try:
-            while(True):
-                np_loss, _ = sess.run([(loss_1, loss_2, loss_3), train_op])
-                print(np_loss)
-                # np_loss = sess.run(train_op)
-                # print("done")
-        except tf.errors.OutOfRangeError:
-            pass
-    if args.tensorboard:
-        terminate_process_safe(tensorboard_process)
+    with tf.summary.FileWriter(tensorboard_dir) as summary_writer:
+        if args.tensorboard:
+            tensorboard_process = tensorboard(tensorboard_dir)
+        with tf.Session() as sess:
+            sess.run([dataset_iterator.initializer, tf.global_variables_initializer()])
+            try:
+                iteration = 0
+                while(True):
+                    np_loss, _, np_summary = sess.run([(min_distance_loss, confidence_loss), train_op, summary])
+                    print(np_loss)
+                    summary_writer.add_summary(np_summary, global_step=iteration)
+                    iteration += 1
+            except tf.errors.OutOfRangeError:
+                pass
+        if args.tensorboard:
+            terminate_process_safe(tensorboard_process)
