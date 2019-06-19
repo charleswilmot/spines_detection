@@ -1,11 +1,13 @@
-* Dependencies *
+## Dependencies
 
+```
 pip3 install --user tensorflow==1.5
 pip3 install --user socket
+...
+```
 
 
-
-* Generate the data *
+## Generate the data *
 
 ```
 python3 make_tf_records.py \
