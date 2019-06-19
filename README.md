@@ -7,7 +7,7 @@ pip3 install --user socket
 ```
 
 
-## Generate the data *
+## Generate the data
 
 ```
 python3 make_tf_records.py \
@@ -43,4 +43,15 @@ python3 make_tf_records.py \
   --cells-stride-z 2          \
   --cells-padding SAME        \
 
+```
+
+
+
+## Start training
+
+```
+p3 training_local.py \
+  ../tfrecords/something/SR51N1_fake_training.tfrecord \
+  --name anameforthetraining \
+  --n-epochs 1
 ```
