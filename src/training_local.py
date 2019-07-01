@@ -37,21 +37,15 @@ def terminate_process_safe(p):
         time.sleep(0.1)
 
 
-def tensorboard_func(logdir):
+def tensorboard_func(self):
     port = get_available_port()
-    p1 = multiprocessing.Process(target=tensorboard_server_func, args=(logdir, port), daemon=True)
+    p1 = multiprocessing.Process(target=tensorboard_server_func, args=(self.logdir, port), daemon=True)
     p1.start()
     time.sleep(2)
     p2 = multiprocessing.Process(target=chromium_func, args=(port,), daemon=True)
     p2.start()
     p2.join()
     terminate_process_safe(p1)
-
-
-def tensorboard(logdir):
-    p1 = multiprocessing.Process(target=tensorboard_func, args=(logdir, ))
-    p1.start()
-    return p1
 
 
 if __name__ == "__main__":
@@ -100,27 +94,24 @@ if __name__ == "__main__":
     parser.add_argument(
         "-tb", "--tensorboard",
         action="store_true",
-        help="Starts tensorboard"
-    )
+        help="Start tensorboard"
+        )
 
 
-    # clear ; p3 training_local.py ../tfrecords/cell_size_032_004__cell_strides_008_002__padding_SAME__image_size_512/test3.tfrecord -n test -ne 1 -tb
+
     args = parser.parse_args()
     name_suffix = ("_" + args.name) if args.name else ""
     output_dir = time.strftime("../training_runs/%Y_%m_%d_%H_%M_%S", time.localtime()) + name_suffix
     checkpoint_dir = output_dir + "/checkpoint"
     tensorboard_dir = output_dir + "/tensorboard"
-    os.mkdir(output_dir)
-    os.mkdir(checkpoint_dir)
-    os.mkdir(tensorboard_dir)
-
 
     dirpath, name = os.path.split(args.path)
     name = name.replace(".tfrecord", "")
     with open(dirpath + '/' + name + ".args", "rb") as f:
         generation_args = pickle.load(f)
 
-    dataset = naked_dataset(args.path, stack_type=tf.float32).batch(1)
+    dataset = naked_dataset(args.path)
+    dataset = dataset.batch(1)
     dataset = dataset.repeat(args.n_epochs)
     dataset = dataset.shuffle(buffer_size=50)
     dataset_iterator = dataset.make_initializable_iterator()
@@ -128,10 +119,12 @@ if __name__ == "__main__":
 
     if args.network_type is "SimpleLinearModel":
         net = network.SimpleLinearModel(generation_args, args.detectors)
+    elif args.network_type == "type1":
+        net = network.Type1Model(generation_args, args.detectors)
     else:
-        raise ValueError("Network type not recognized")
+        raise ValueError("Network type not recognized, got {}".format(args.network_type))
 
-    inp = datapoint["stack"]
+    inp = tf.cast(datapoint["stack"], tf.float32) / 127.5 - 1
     net_out = net(inp)
     cells_coords = tf.stack([
         datapoint["cells_coords_x"],
@@ -141,19 +134,44 @@ if __name__ == "__main__":
         datapoint["within_cells_coords_x"],
         datapoint["within_cells_coords_y"],
         datapoint["within_cells_coords_z"]], axis=-1)
-    lambda_coord = 5
+    with tf.Session() as sess:
+        print("### at runtime")
+        sess.run([dataset_iterator.initializer, tf.global_variables_initializer()])
+        within_cells_coords_shape, cells_coords_shape = sess.run([tf.shape(within_cells_coords), tf.shape(cells_coords)])
+        print("within_cells_coords", within_cells_coords_shape)
+        print("cells_coords", cells_coords_shape)
+    lambda_coord = 50
     lambda_noobj = 0.05
-    min_distance_loss, confidence_loss = get_losses(net_out, cells_coords, within_cells_coords, lambda_coord, lambda_noobj)
-    min_distance_summary = tf.summary.scalar("min_distance_loss", min_distance_loss)
-    confidence_summary = tf.summary.scalar("confidence_loss", confidence_loss)
-    # noobj_summary = tf.summary.scalar("noobj_loss", noobj_loss)
-    summary = tf.summary.merge([min_distance_summary, confidence_summary])
 
+    ret = get_losses(net_out, cells_coords, within_cells_coords, lambda_coord, lambda_noobj)
+    min_distance_loss_sum = ret["min_distance_loss_sum"]
+    min_distance_loss_mean = ret["min_distance_loss_mean"]
+    confidence_loss_sum = ret["confidence_loss_sum"]
+    confidence_mean_abs_distance = ret["confidence_mean_abs_distance"]
+    mean_distance_to_1_confidence = ret["mean_distance_to_1_confidence"]
+
+    min_distance_loss_sum_summary = tf.summary.scalar("min_distance_loss_sum", min_distance_loss_sum)
+    min_distance_loss_mean_summary = tf.summary.scalar("min_distance_loss_mean", min_distance_loss_mean)
+    confidence_loss_sum_summary = tf.summary.scalar("confidence_loss_sum", confidence_loss_sum)
+    confidence_mean_abs_distance_summary = tf.summary.scalar("confidence_mean_abs_distance", confidence_mean_abs_distance)
+    mean_distance_to_1_confidence_summary = tf.summary.scalar("mean_distance_to_1_confidence", mean_distance_to_1_confidence)
+
+    summary = tf.summary.merge([
+        min_distance_loss_sum_summary,
+        min_distance_loss_mean_summary,
+        confidence_loss_sum_summary,
+        confidence_mean_abs_distance_summary,
+        mean_distance_to_1_confidence_summary
+    ])
 
     optimizer = tf.train.AdamOptimizer(args.learning_rate)
-    train_op = optimizer.minimize(min_distance_loss + confidence_loss)
+    train_op = optimizer.minimize(min_distance_loss_sum + confidence_loss_sum)
 
     ### TODO:
+    ### add start tensorboard to argsparser
+    ### add batch size to argsparser
+    ### start tensorboard
+    ### fix loss
     ### summaries
 
     with tf.summary.FileWriter(tensorboard_dir) as summary_writer:
@@ -164,7 +182,7 @@ if __name__ == "__main__":
             try:
                 iteration = 0
                 while(True):
-                    np_loss, _, np_summary = sess.run([(min_distance_loss, confidence_loss), train_op, summary])
+                    np_loss, _, np_summary = sess.run([(min_distance_loss_sum, confidence_loss_sum), train_op, summary])
                     print(np_loss)
                     summary_writer.add_summary(np_summary, global_step=iteration)
                     iteration += 1

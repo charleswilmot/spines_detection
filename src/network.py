@@ -1,33 +1,62 @@
 import tensorflow as tf
 from tensorflow import keras as kr
-from tensorflow.python.keras._impl.keras import backend as K
-from tensorflow.python.framework import ops
 
 
-class SimpleLinearModel(kr.Sequential):
-    def __init__(self, generation_args, n_detectors_per_cell, name=None):
-        super(SimpleLinearModel, self).__init__(name=name)
+class SimpleLinearModel(kr.Model):
+    def __init__(self, generation_args, n_detectors_per_cell):
+        super(SimpleLinearModel, self).__init__()
         self.layer = kr.layers.Conv3D(
             filters=n_detectors_per_cell * (3 + 1),  # x,y,z + prob
             kernel_size=(generation_args.cells_size_xy, generation_args.cells_size_xy, generation_args.cells_size_z),
             strides=(generation_args.cells_stride_xy, generation_args.cells_stride_xy, generation_args.cells_stride_z),
             padding=generation_args.cells_padding,
-            use_bias=True,
-            input_shape=(generation_args.image_size, generation_args.image_size, None, 1)
+            use_bias=True
         )
-        self.add(self.layer)
-        # self.built = False
-        # if not name:
-        #     prefix = 'sequential_'
-        #     name = prefix + str(K.get_uid(prefix))
-        # self._name = name
-        # self._scope = None
-        # self._reuse = None
-        # self._base_name = name
-        # self._graph = ops.get_default_graph()
-        # self._input_layers = []
-        # self._dtype = None
-        # self._activity_regularizer = None
 
-    # def call(self, inputs):
-    #     return self.layer(inputs)
+    def call(self, inputs):
+        return self.layer(inputs)
+
+
+class Type1Model(kr.Model):
+    def __init__(self, generation_args, n_detectors_per_cell):
+        # cell_size_xy, cells_stride_xy, cell_size_z, cells_stride_z
+        # 64,           32,              4,           2
+        super(Type1Model, self).__init__()
+        self.layer = [
+            kr.layers.Conv3D(
+                filters=32,
+                kernel_size=(4, 4, 4),
+                strides=(4, 4, 2),
+                padding=generation_args.cells_padding,
+                use_bias=True,
+                activation=tf.nn.relu
+            ),
+            kr.layers.Conv3D(
+                filters=32,
+                kernel_size=(4, 4, 1),
+                strides=(4, 4, 1),
+                padding=generation_args.cells_padding,
+                use_bias=True,
+                activation=tf.nn.relu
+            ),
+            kr.layers.Conv3D(
+                filters=32,
+                kernel_size=(2, 2, 1),
+                strides=(2, 2, 1),
+                padding=generation_args.cells_padding,
+                use_bias=True,
+                activation=tf.nn.relu
+            ),
+            kr.layers.Conv3D(
+                filters=n_detectors_per_cell * (3 + 1),
+                kernel_size=(2, 2, 1),
+                strides=(1, 1, 1),
+                padding=generation_args.cells_padding,
+                use_bias=True
+            )
+        ]
+
+    def call(self, inputs):
+        for l in self.layers:
+            inputs = l(inputs)
+        return inputs

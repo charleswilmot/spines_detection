@@ -179,7 +179,6 @@ def stack_example(images, labels):
         all_within_cells_coords.append(within_cells_coords)
     all_cells_coords = np.concatenate(all_cells_coords, axis=0)
     all_within_cells_coords = np.concatenate(all_within_cells_coords, axis=0)
-    all_stack_x, all_stack_y = resize_coords(all_stack_x, all_stack_y)
     feature = {
         'height': _int64_feature([image_shape[0]]),                               # single value
         'width': _int64_feature([image_shape[1]]),                                # single value
@@ -218,8 +217,10 @@ def to_tfrecords(labels):
 
 
 if __name__ == "__main__":
-    # example of a command line for making a dataset:
+    # example of a command line for testing the file:
     # clear; p3 make_tf_records.py -i /home/kaschube-shared/spines/SpineMeasurements_XYcoordinates/SR51N1/ -l /home/kaschube-shared/spines/SpineMeasurements_XYcoordinates/SR51N1/SR51*eu*end*ay*.mat -n test -cstxy 8 -cstz 2 -csiz 4 -cpd SAME
+
+    # to_cells_coords(16.1, 16.1, 3, 50)
 
     output_path = args_to_path()
     tfrecord_path = output_path + args.name + ".tfrecord"
